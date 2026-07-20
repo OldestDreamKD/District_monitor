@@ -23,6 +23,7 @@ TARGET_CINEMAS = [
     "Palazzo",
     "Nexus Vijaya",
     "INOX",
+    "MovieMax",
 ]
 
 ALERTED_FILE = "district_alerted.json"
