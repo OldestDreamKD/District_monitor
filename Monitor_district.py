@@ -15,7 +15,7 @@ LANGUAGE_KEYS = {
     "hMPG2XHyKL": "Tamil",
 }
 
-TARGET_DATES = ["2026-07-30", "2026-07-31", "2026-08-01", "2026-08-02"]
+TARGET_DATES = ["2026-07-30", "2026-07-31"]
 
 TARGET_CINEMAS = [
     "PVR",
@@ -55,14 +55,27 @@ def save_json(path, data):
 
 def send_telegram(message):
     token   = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
+    chat_id_1 = os.getenv("TELEGRAM_CHAT_ID_1")
+    chat_id_2 = os.getenv("TELEGRAM_CHAT_ID_2")
+
+    if not token or not chat_id_1:
         print("Telegram not configured.")
         return False
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id": chat_id, "text": message},
+            data={"chat_id_1": chat_id_1, "text": message},
+            timeout=15,
+        )
+        print(f"Telegram: {r.status_code}")
+        return r.status_code == 200
+    except Exception as e:
+        print(f"Telegram error: {e}")
+        return False
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id_2": chat_id_2, "text": message},
             timeout=15,
         )
         print(f"Telegram: {r.status_code}")
