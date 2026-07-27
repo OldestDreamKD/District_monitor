@@ -59,6 +59,8 @@ def send_telegram_1(message):
 
     if not token or not chat_id_1:
         print("Telegram not configured.")
+        print(token)
+        print(chat_id_1)
         return False
     try:
         r = requests.post(
