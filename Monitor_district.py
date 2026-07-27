@@ -1,6 +1,5 @@
 import requests
 import os
-import re
 import json
 from datetime import datetime
 
@@ -36,6 +35,10 @@ HEADERS = {
     "Cache-Control": "no-cache",
 }
 
+# Telegram message length limit (leave buffer under 4096)
+TG_MAX_LEN = 3800
+
+
 # ================== HELPERS ==================
 
 def load_json(path, default):
@@ -53,16 +56,16 @@ def save_json(path, data):
         json.dump(data, f, indent=2, sort_keys=True)
 
 
-def send_telegram(chat_id_env, message, label=""):
+def send_telegram(message):
+    """Send message to the configured Telegram group."""
     token   = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv(chat_id_env)
+    chat_id = os.getenv("TELEGRAM_GROUP_ID")
 
     if not token or not chat_id:
-        print(f"[{label}] Not configured. token_set={bool(token)}, chat_id_set={bool(chat_id)}")
+        print(f"[TG] Not configured. token_set={bool(token)}, group_id_set={bool(chat_id)}")
         return False
 
     chat_id = chat_id.strip().strip('"').strip("'")
-    print(f"[{label}] Sending to chat_id='{chat_id}' (len={len(chat_id)})")
 
     try:
         r = requests.post(
@@ -70,11 +73,46 @@ def send_telegram(chat_id_env, message, label=""):
             data={"chat_id": chat_id, "text": message},
             timeout=15,
         )
-        print(f"[{label}] Status: {r.status_code} | Response: {r.text[:300]}")
+        print(f"[TG] Status: {r.status_code} | Response: {r.text[:200]}")
         return r.status_code == 200
     except Exception as e:
-        print(f"[{label}] Error: {e}")
+        print(f"[TG] Error: {e}")
         return False
+
+
+def send_telegram_chunked(full_message):
+    """
+    Split a long message into chunks (max ~3800 chars each) and send them.
+    Returns True only if ALL chunks succeed.
+    """
+    if len(full_message) <= TG_MAX_LEN:
+        return send_telegram(full_message)
+
+    # Split on blank lines to keep hits together where possible
+    blocks   = full_message.split("\n\n")
+    chunks   = []
+    current  = ""
+
+    for block in blocks:
+        # +2 for the "\n\n" we removed
+        if len(current) + len(block) + 2 > TG_MAX_LEN:
+            if current:
+                chunks.append(current.rstrip())
+            current = block + "\n\n"
+        else:
+            current += block + "\n\n"
+
+    if current.strip():
+        chunks.append(current.rstrip())
+
+    print(f"[TG] Splitting message into {len(chunks)} chunks")
+    all_ok = True
+    for i, chunk in enumerate(chunks, 1):
+        header = f"(Part {i}/{len(chunks)})\n" if len(chunks) > 1 else ""
+        if not send_telegram(header + chunk):
+            all_ok = False
+
+    return all_ok
 
 
 # ================== DISTRICT SCRAPER ==================
@@ -136,7 +174,7 @@ def get_cinemas_for(lang_key, lang_name, date):
         return []
 
     page_data = data.get("pageData", {})
-    cinemas = []
+    cinemas   = []
 
     for section in ("nearbyCinemas", "farCinemas"):
         for cinema in page_data.get(section, []):
@@ -182,7 +220,7 @@ def discover_language_keys(html):
             if depth == 0:
                 try:
                     buckets = json.loads(html[val_start:i+1])
-                    result = {}
+                    result  = {}
                     for bucket in buckets:
                         if bucket.get("bucketKey") == "language":
                             for b in bucket.get("buckets", []):
@@ -256,7 +294,8 @@ def check_all():
         print("\nNo new hits.")
         return
 
-    lines = [f"SPIDER-MAN BOOKING OPEN!\n"]
+    # Build alert message
+    lines = [f"🕷️ {MOVIE_NAME} — BOOKING OPEN!\n"]
     for h in new_hits:
         d           = h["date"]
         pretty_date = f"{d[8:10]}/{d[5:7]}/{d[0:4]}"
@@ -271,17 +310,13 @@ def check_all():
 
     message = "\n".join(lines)
 
-    # Send to both chats
-    sent_1 = send_telegram("TELEGRAM_CHAT_ID_1", message, label="Chat1")
-    sent_2 = send_telegram("TELEGRAM_CHAT_ID_2", message, label="Chat2")
-
-    if sent_1 or sent_2:
+    if send_telegram_chunked(message):
         for h in new_hits:
             alerted.add(h["key"])
         save_json(ALERTED_FILE, sorted(alerted))
-        print(f"Saved {len(new_hits)} alerts. Sent: Chat1={sent_1}, Chat2={sent_2}")
+        print(f"Saved {len(new_hits)} alerts.")
     else:
-        print("BOTH failed. NOT saving — will retry next run.")
+        print("Telegram failed. NOT saving — will retry next run.")
 
 
 if __name__ == "__main__":
