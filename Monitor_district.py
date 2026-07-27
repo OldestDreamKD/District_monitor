@@ -53,44 +53,28 @@ def save_json(path, data):
         json.dump(data, f, indent=2, sort_keys=True)
 
 
-def send_telegram_1(message):
+def send_telegram(chat_id_env, message, label=""):
     token   = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id_1 = os.getenv("TELEGRAM_CHAT_ID_1")
+    chat_id = os.getenv(chat_id_env)
 
-    if not token or not chat_id_1:
-        print("Telegram not configured.")
+    if not token or not chat_id:
+        print(f"[{label}] Not configured. token_set={bool(token)}, chat_id_set={bool(chat_id)}")
         return False
+
+    # Strip any whitespace/quotes that may have been pasted
+    chat_id = chat_id.strip().strip('"').strip("'")
+    print(f"[{label}] Sending to chat_id='{chat_id}' (len={len(chat_id)})")
+
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id": chat_id_1, "text": message},
+            data={"chat_id": chat_id, "text": message},
             timeout=15,
         )
-        print(f"Telegram: {r.status_code}")
+        print(f"[{label}] Status: {r.status_code} | Response: {r.text[:300]}")
         return r.status_code == 200
     except Exception as e:
-        print(f"Telegram error: {e}")
-        return False
-
-
-def send_telegram_2(message):
-    token   = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id_2 = os.getenv("TELEGRAM_CHAT_ID_2")
-
-    if not token or not chat_id_2:
-        print("Telegram not configured.")
-        return False
-   
-    try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id": chat_id_2, "text": message},
-            timeout=15,
-        )
-        print(f"Telegram: {r.status_code}")
-        return r.status_code == 200
-    except Exception as e:
-        print(f"Telegram error: {e}")
+        print(f"[{label}] Error: {e}")
         return False
 
 # ================== DISTRICT SCRAPER ==================
@@ -285,18 +269,29 @@ def check_all():
             lines.append(f"Book:     {h['url']}")
         lines.append("")
 
-    if send_telegram_1("\n".join(lines)):
-        for h in new_hits:
-            alerted.add(h["key"])
-        save_json(ALERTED_FILE, sorted(alerted))
-        print(f"Saved {len(new_hits)} alerts.")
+def send_telegram(chat_id_env, message, label=""):
+    token   = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv(chat_id_env)
 
-    
-    if send_telegram_2("\n".join(lines)):
-        for h in new_hits:
-            alerted.add(h["key"])
-        save_json(ALERTED_FILE, sorted(alerted))
-        print(f"Saved {len(new_hits)} alerts.")
+    if not token or not chat_id:
+        print(f"[{label}] Not configured. token_set={bool(token)}, chat_id_set={bool(chat_id)}")
+        return False
+
+    # Strip any whitespace/quotes that may have been pasted
+    chat_id = chat_id.strip().strip('"').strip("'")
+    print(f"[{label}] Sending to chat_id='{chat_id}' (len={len(chat_id)})")
+
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": chat_id, "text": message},
+            timeout=15,
+        )
+        print(f"[{label}] Status: {r.status_code} | Response: {r.text[:300]}")
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[{label}] Error: {e}")
+        return False
 
 
 if __name__ == "__main__":
