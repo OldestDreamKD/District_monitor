@@ -217,59 +217,6 @@ def discover_language_keys(html):
 
 # ================== MAIN ==================
 
-def check_all():
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n=== District Monitor Run at {now} ===")
-
-    alerted = set(load_json(ALERTED_FILE, []))
-
-    # Discover language keys
-    try:
-        probe_url = (
-            f"https://www.district.in/movies/{MOVIE_SLUG}-{MOVIE_ID}"
-            f"?frmtid=rrfdpndypd&fromdate={TARGET_DATES[0]}"
-        )
-        probe_r   = requests.get(probe_url, headers=HEADERS, timeout=20)
-        discovered = discover_language_keys(probe_r.text)
-        lang_keys  = {**LANGUAGE_KEYS, **discovered} if discovered else LANGUAGE_KEYS
-        print(f"Language keys: {lang_keys}")
-    except Exception as e:
-        lang_keys = LANGUAGE_KEYS
-        print(f"Language discovery error: {e}, using defaults")
-
-    new_hits = []
-
-    for lang_key, lang_name in lang_keys.items():
-        for date in TARGET_DATES:
-            print(f"\n  Checking {lang_name} / {date} ...")
-            cinemas = get_cinemas_for(lang_key, lang_name, date)
-            print(f"    Cinemas with sessions: {len(cinemas)}")
-
-            for cinema in cinemas:
-                cname = cinema["name"]
-                print(f"    -> {cname}")
-
-                if is_target_cinema(cname):
-                    key = f"{lang_key}|{cinema['id']}|{date}"
-                    if key in alerted:
-                        print(f"       Already alerted")
-                        continue
-
-                    show_times = [
-                        s.get("showTime", "")[11:16]
-                        for s in cinema["sessions"]
-                    ]
-                    new_hits.append({
-                        "language":  lang_name,
-                        "cinema":    cname,
-                        "cinema_id": cinema["id"],
-                        "date":      date,
-                        "show_times": show_times,
-                        "url":       cinema["url"],
-                        "key":       key,
-                    })
-                    print(f"       TARGET HIT! Shows: {show_times}")
-
     if not new_hits:
         print("\nNo new hits.")
         return
@@ -287,19 +234,20 @@ def check_all():
             lines.append(f"Book:     {h['url']}")
         lines.append("")
 
-    if send_telegram_1("\n".join(lines)):
+    message = "\n".join(lines)
+
+    # Send to both chats
+    sent_1 = send_telegram_1(message)
+    sent_2 = send_telegram_2(message)
+
+    # If at least one succeeded, mark as alerted
+    if sent_1 or sent_2:
         for h in new_hits:
             alerted.add(h["key"])
         save_json(ALERTED_FILE, sorted(alerted))
-        print(f"Saved {len(new_hits)} alerts.")
-
-    
-    if send_telegram_2("\n".join(lines)):
-        for h in new_hits:
-            alerted.add(h["key"])
-        save_json(ALERTED_FILE, sorted(alerted))
-        print(f"Saved {len(new_hits)} alerts.")
-
+        print(f"Saved {len(new_hits)} alerts. Sent: T1={sent_1}, T2={sent_2}")
+    else:
+        print("Both Telegram sends failed — NOT marking as alerted (will retry next run).")
 
 if __name__ == "__main__":
     check_all()
