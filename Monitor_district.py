@@ -63,7 +63,7 @@ def send_telegram_1(message):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id_1": chat_id_1, "text": message},
+            data={"chat_id": chat_id_1, "text": message},
             timeout=15,
         )
         print(f"Telegram: {r.status_code}")
@@ -84,7 +84,7 @@ def send_telegram_2(message):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id_2": chat_id_2, "text": message},
+            data={"chat_id": chat_id_2, "text": message},
             timeout=15,
         )
         print(f"Telegram: {r.status_code}")
