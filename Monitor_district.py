@@ -53,10 +53,9 @@ def save_json(path, data):
         json.dump(data, f, indent=2, sort_keys=True)
 
 
-def send_telegram(message):
+def send_telegram_1(message):
     token   = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id_1 = os.getenv("TELEGRAM_CHAT_ID_1")
-    chat_id_2 = os.getenv("TELEGRAM_CHAT_ID_2")
 
     if not token or not chat_id_1:
         print("Telegram not configured.")
@@ -72,6 +71,16 @@ def send_telegram(message):
     except Exception as e:
         print(f"Telegram error: {e}")
         return False
+
+
+def send_telegram_2(message):
+    token   = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id_2 = os.getenv("TELEGRAM_CHAT_ID_2")
+
+    if not token or not chat_id_2:
+        print("Telegram not configured.")
+        return False
+   
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
@@ -83,7 +92,6 @@ def send_telegram(message):
     except Exception as e:
         print(f"Telegram error: {e}")
         return False
-
 
 # ================== DISTRICT SCRAPER ==================
 
@@ -277,7 +285,14 @@ def check_all():
             lines.append(f"Book:     {h['url']}")
         lines.append("")
 
-    if send_telegram("\n".join(lines)):
+    if send_telegram_1("\n".join(lines)):
+        for h in new_hits:
+            alerted.add(h["key"])
+        save_json(ALERTED_FILE, sorted(alerted))
+        print(f"Saved {len(new_hits)} alerts.")
+
+    
+    if send_telegram_2("\n".join(lines)):
         for h in new_hits:
             alerted.add(h["key"])
         save_json(ALERTED_FILE, sorted(alerted))
