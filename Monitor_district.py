@@ -61,7 +61,6 @@ def send_telegram(chat_id_env, message, label=""):
         print(f"[{label}] Not configured. token_set={bool(token)}, chat_id_set={bool(chat_id)}")
         return False
 
-    # Strip any whitespace/quotes that may have been pasted
     chat_id = chat_id.strip().strip('"').strip("'")
     print(f"[{label}] Sending to chat_id='{chat_id}' (len={len(chat_id)})")
 
@@ -76,6 +75,7 @@ def send_telegram(chat_id_env, message, label=""):
     except Exception as e:
         print(f"[{label}] Error: {e}")
         return False
+
 
 # ================== DISTRICT SCRAPER ==================
 
@@ -211,7 +211,7 @@ def check_all():
             f"https://www.district.in/movies/{MOVIE_SLUG}-{MOVIE_ID}"
             f"?frmtid=rrfdpndypd&fromdate={TARGET_DATES[0]}"
         )
-        probe_r   = requests.get(probe_url, headers=HEADERS, timeout=20)
+        probe_r    = requests.get(probe_url, headers=HEADERS, timeout=20)
         discovered = discover_language_keys(probe_r.text)
         lang_keys  = {**LANGUAGE_KEYS, **discovered} if discovered else LANGUAGE_KEYS
         print(f"Language keys: {lang_keys}")
@@ -269,29 +269,19 @@ def check_all():
             lines.append(f"Book:     {h['url']}")
         lines.append("")
 
-def send_telegram(chat_id_env, message, label=""):
-    token   = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv(chat_id_env)
+    message = "\n".join(lines)
 
-    if not token or not chat_id:
-        print(f"[{label}] Not configured. token_set={bool(token)}, chat_id_set={bool(chat_id)}")
-        return False
+    # Send to both chats
+    sent_1 = send_telegram("TELEGRAM_CHAT_ID_1", message, label="Chat1")
+    sent_2 = send_telegram("TELEGRAM_CHAT_ID_2", message, label="Chat2")
 
-    # Strip any whitespace/quotes that may have been pasted
-    chat_id = chat_id.strip().strip('"').strip("'")
-    print(f"[{label}] Sending to chat_id='{chat_id}' (len={len(chat_id)})")
-
-    try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id": chat_id, "text": message},
-            timeout=15,
-        )
-        print(f"[{label}] Status: {r.status_code} | Response: {r.text[:300]}")
-        return r.status_code == 200
-    except Exception as e:
-        print(f"[{label}] Error: {e}")
-        return False
+    if sent_1 or sent_2:
+        for h in new_hits:
+            alerted.add(h["key"])
+        save_json(ALERTED_FILE, sorted(alerted))
+        print(f"Saved {len(new_hits)} alerts. Sent: Chat1={sent_1}, Chat2={sent_2}")
+    else:
+        print("BOTH failed. NOT saving — will retry next run.")
 
 
 if __name__ == "__main__":
