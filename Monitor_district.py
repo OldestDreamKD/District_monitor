@@ -35,7 +35,6 @@ HEADERS = {
     "Cache-Control": "no-cache",
 }
 
-# Telegram message length limit (leave buffer under 4096)
 TG_MAX_LEN = 3800
 
 
@@ -57,7 +56,6 @@ def save_json(path, data):
 
 
 def send_telegram(message):
-    """Send message to the configured Telegram group."""
     token   = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_GROUP_ID")
 
@@ -81,20 +79,14 @@ def send_telegram(message):
 
 
 def send_telegram_chunked(full_message):
-    """
-    Split a long message into chunks (max ~3800 chars each) and send them.
-    Returns True only if ALL chunks succeed.
-    """
     if len(full_message) <= TG_MAX_LEN:
         return send_telegram(full_message)
 
-    # Split on blank lines to keep hits together where possible
     blocks   = full_message.split("\n\n")
     chunks   = []
     current  = ""
 
     for block in blocks:
-        # +2 for the "\n\n" we removed
         if len(current) + len(block) + 2 > TG_MAX_LEN:
             if current:
                 chunks.append(current.rstrip())
@@ -131,11 +123,9 @@ def extract_session_data(html, lang_key, date):
         idx = html.find(f'"{session_key}"')
         if idx == -1:
             continue
-
         val_start = html.find('{', idx)
         if val_start == -1:
             continue
-
         depth = 0
         i = val_start
         while i < len(html):
@@ -150,7 +140,6 @@ def extract_session_data(html, lang_key, date):
                     except Exception:
                         return None
             i += 1
-
     return None
 
 
@@ -183,14 +172,38 @@ def get_cinemas_for(lang_key, lang_name, date):
             address    = info.get("address", "")
             cid        = cinema.get("id") or info.get("id")
             entity_url = cinema.get("entityUrl", "")
-            sessions   = cinema.get("sessions", [])
-            if not sessions:
+            all_sessions = cinema.get("sessions", [])
+
+            if not all_sessions:
                 continue
+
+            # Filter to only bookable sessions
+            active_sessions = []
+            skipped_reasons = []
+            for s in all_sessions:
+                is_disabled = s.get("disableClick", False)
+                avail_seats = s.get("avail", 0)
+                status      = s.get("statusColor", "")
+
+                if not is_disabled and avail_seats > 0:
+                    active_sessions.append(s)
+                else:
+                    skipped_reasons.append(
+                        f"{s.get('showTime','?')[11:16]}(disabled={is_disabled},"
+                        f"avail={avail_seats},status={status})"
+                    )
+
+            if not active_sessions:
+                if is_target_cinema(name):
+                    print(f"    → {name} — ALL SESSIONS INACTIVE, skipping")
+                    print(f"      Details: {skipped_reasons}")
+                continue
+
             cinemas.append({
                 "id":       cid,
                 "name":     name,
                 "address":  address,
-                "sessions": sessions,
+                "sessions": active_sessions,
                 "url":      f"https://www.district.in{entity_url}" if entity_url else "",
             })
 
@@ -208,7 +221,6 @@ def discover_language_keys(html):
     val_start = html.find('[', idx)
     if val_start == -1:
         return {}
-
     depth = 0
     i = val_start
     while i < len(html):
@@ -243,7 +255,6 @@ def check_all():
 
     alerted = set(load_json(ALERTED_FILE, []))
 
-    # Discover language keys
     try:
         probe_url = (
             f"https://www.district.in/movies/{MOVIE_SLUG}-{MOVIE_ID}"
@@ -263,7 +274,7 @@ def check_all():
         for date in TARGET_DATES:
             print(f"\n  Checking {lang_name} / {date} ...")
             cinemas = get_cinemas_for(lang_key, lang_name, date)
-            print(f"    Cinemas with sessions: {len(cinemas)}")
+            print(f"    Bookable cinemas: {len(cinemas)}")
 
             for cinema in cinemas:
                 cname = cinema["name"]
@@ -280,30 +291,42 @@ def check_all():
                         for s in cinema["sessions"]
                     ]
                     new_hits.append({
-                        "language":  lang_name,
-                        "cinema":    cname,
-                        "cinema_id": cinema["id"],
-                        "date":      date,
-                        "show_times": show_times,
-                        "url":       cinema["url"],
-                        "key":       key,
+                        "language":     lang_name,
+                        "cinema":       cname,
+                        "cinema_id":    cinema["id"],
+                        "date":         date,
+                        "show_times":   show_times,
+                        "sessions_raw": cinema["sessions"],
+                        "url":          cinema["url"],
+                        "key":          key,
                     })
-                    print(f"       TARGET HIT! Shows: {show_times}")
+                    print(f"       TARGET HIT! Bookable shows: {show_times}")
 
     if not new_hits:
         print("\nNo new hits.")
         return
 
-    # Build alert message
     lines = [f"🕷️ {MOVIE_NAME} — BOOKING OPEN!\n"]
     for h in new_hits:
         d           = h["date"]
         pretty_date = f"{d[8:10]}/{d[5:7]}/{d[0:4]}"
-        times_str   = ", ".join(h["show_times"])
+
+        show_lines = []
+        for s in h["sessions_raw"]:
+            time_str = s.get("showTime", "")[11:16]
+            avail    = s.get("avail", 0)
+            total    = s.get("total", 0)
+            fmt      = s.get("scrnFmt", "")
+            audi     = s.get("audi", "")
+            fmt_str  = f" ({fmt})" if fmt else ""
+            audi_str = f" — {audi}" if audi else ""
+            show_lines.append(f"  {time_str}{fmt_str} — {avail}/{total} seats{audi_str}")
+
         lines.append(f"Language: {h['language']}")
         lines.append(f"Cinema:   {h['cinema']}")
         lines.append(f"Date:     {pretty_date}")
-        lines.append(f"Shows:    {times_str}")
+        lines.append("Shows:")
+        lines.extend(show_lines)
         if h["url"]:
             lines.append(f"Book:     {h['url']}")
         lines.append("")
