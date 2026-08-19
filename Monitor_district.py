@@ -1,8 +1,6 @@
 import requests
 import os
 import json
-import random
-import time
 from datetime import datetime
 
 # ================== CONFIGURATION ==================
@@ -12,68 +10,32 @@ MOVIE_SLUG = "spider-man-brand-new-day-movie-tickets-in-chennai"
 MOVIE_NAME = "Spider-Man: Brand New Day"
 
 LANGUAGE_KEYS = {
-    "hMPG2XHyKL": "Tamil",   # ← Tamil only now
+    "rrfdpndypd": "English",
+    "hMPG2XHyKL": "Tamil",
 }
 
-TARGET_DATES = ["2026-08-20", "2026-08-21"]
+TARGET_DATES = ["2026-07-30", "2026-07-31", "2026-08-07"]
 
 TARGET_CINEMAS = [
     "Express Avenue",
-    "Nexus Vijaya Mall",
+    "Palazzo",
+    "Nexus Vijaya",
+    "Vijaya Mall",
+    "Forum Vijaya",
+    "PVR"
 ]
 
 ALERTED_FILE = "district_alerted.json"
 
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0",
-]
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/149.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.district.in/",
+    "Cache-Control": "no-cache",
+}
 
 TG_MAX_LEN = 3800
-
-
-def get_headers():
-    return {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": "https://www.district.in/",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "Sec-Ch-Ua": '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-        "Connection": "keep-alive",
-    }
-
-
-# Persistent session for cookies
-_session = None
-
-def get_session():
-    global _session
-    if _session is None:
-        _session = requests.Session()
-        # Warm-up: visit homepage first to get cookies
-        try:
-            _session.get(
-                "https://www.district.in/",
-                headers=get_headers(),
-                timeout=15,
-            )
-            time.sleep(random.uniform(1, 3))
-        except Exception as e:
-            print(f"Warmup failed: {e}")
-    return _session
 
 
 # ================== HELPERS ==================
@@ -98,7 +60,7 @@ def send_telegram(message):
     chat_id = os.getenv("TELEGRAM_GROUP_ID")
 
     if not token or not chat_id:
-        print(f"[TG] Not configured.")
+        print(f"[TG] Not configured. token_set={bool(token)}, group_id_set={bool(chat_id)}")
         return False
 
     chat_id = chat_id.strip().strip('"').strip("'")
@@ -109,7 +71,7 @@ def send_telegram(message):
             data={"chat_id": chat_id, "text": message},
             timeout=15,
         )
-        print(f"[TG] Status: {r.status_code}")
+        print(f"[TG] Status: {r.status_code} | Response: {r.text[:200]}")
         return r.status_code == 200
     except Exception as e:
         print(f"[TG] Error: {e}")
@@ -120,9 +82,9 @@ def send_telegram_chunked(full_message):
     if len(full_message) <= TG_MAX_LEN:
         return send_telegram(full_message)
 
-    blocks  = full_message.split("\n\n")
-    chunks  = []
-    current = ""
+    blocks   = full_message.split("\n\n")
+    chunks   = []
+    current  = ""
 
     for block in blocks:
         if len(current) + len(block) + 2 > TG_MAX_LEN:
@@ -135,7 +97,7 @@ def send_telegram_chunked(full_message):
     if current.strip():
         chunks.append(current.rstrip())
 
-    print(f"[TG] Splitting into {len(chunks)} chunks")
+    print(f"[TG] Splitting message into {len(chunks)} chunks")
     all_ok = True
     for i, chunk in enumerate(chunks, 1):
         header = f"(Part {i}/{len(chunks)})\n" if len(chunks) > 1 else ""
@@ -186,23 +148,8 @@ def get_cinemas_for(lang_key, lang_name, date):
         f"https://www.district.in/movies/{MOVIE_SLUG}-{MOVIE_ID}"
         f"?frmtid={lang_key}&fromdate={date}"
     )
-    
-    session = get_session()
-    
-    # Random delay between requests (2-5 sec) to look human
-    time.sleep(random.uniform(2, 5))
-    
     try:
-        r = session.get(url, headers=get_headers(), timeout=20)
-        
-        if r.status_code == 403:
-            print(f"    HTTP 403 for {lang_name}/{date} — retrying after delay...")
-            time.sleep(random.uniform(10, 20))
-            r = session.get(url, headers=get_headers(), timeout=20)
-            if r.status_code == 403:
-                print(f"    Retry also 403. Skipping.")
-                return []
-        
+        r = requests.get(url, headers=HEADERS, timeout=20)
         if r.status_code != 200:
             print(f"    HTTP {r.status_code} for {lang_name} / {date}")
             return []
@@ -230,6 +177,7 @@ def get_cinemas_for(lang_key, lang_name, date):
             if not all_sessions:
                 continue
 
+            # Filter to only bookable sessions
             active_sessions = []
             skipped_reasons = []
             for s in all_sessions:
@@ -241,14 +189,14 @@ def get_cinemas_for(lang_key, lang_name, date):
                     active_sessions.append(s)
                 else:
                     skipped_reasons.append(
-                        f"{s.get('showTime','?')[11:16]}(d={is_disabled},"
-                        f"a={avail_seats},s={status})"
+                        f"{s.get('showTime','?')[11:16]}(disabled={is_disabled},"
+                        f"avail={avail_seats},status={status})"
                     )
 
             if not active_sessions:
                 if is_target_cinema(name):
-                    print(f"    → {name} — ALL INACTIVE, skipping")
-                    print(f"      {skipped_reasons}")
+                    print(f"    → {name} — ALL SESSIONS INACTIVE, skipping")
+                    print(f"      Details: {skipped_reasons}")
                 continue
 
             cinemas.append({
@@ -266,22 +214,59 @@ def is_target_cinema(name):
     return any(t.lower() in name.lower() for t in TARGET_CINEMAS)
 
 
+def discover_language_keys(html):
+    idx = html.find('"filterBuckets"')
+    if idx == -1:
+        return {}
+    val_start = html.find('[', idx)
+    if val_start == -1:
+        return {}
+    depth = 0
+    i = val_start
+    while i < len(html):
+        c = html[i]
+        if c == '[':
+            depth += 1
+        elif c == ']':
+            depth -= 1
+            if depth == 0:
+                try:
+                    buckets = json.loads(html[val_start:i+1])
+                    result  = {}
+                    for bucket in buckets:
+                        if bucket.get("bucketKey") == "language":
+                            for b in bucket.get("buckets", []):
+                                key   = b.get("key", "")
+                                title = b.get("title", "")
+                                if key and title:
+                                    result[key] = title
+                    return result
+                except Exception:
+                    return {}
+        i += 1
+    return {}
+
+
 # ================== MAIN ==================
 
 def check_all():
-    # Random 0-60 sec delay to avoid predictable timing
-    initial_delay = random.uniform(0, 60)
-    print(f"Sleeping {initial_delay:.1f}s to randomize timing...")
-    time.sleep(initial_delay)
-    
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"\n=== District Monitor Run at {now} ===")
 
     alerted = set(load_json(ALERTED_FILE, []))
 
-    # Skip auto-discovery, use fixed LANGUAGE_KEYS
-    lang_keys = LANGUAGE_KEYS
-    print(f"Language keys (fixed): {lang_keys}")
+    try:
+        probe_url = (
+            f"https://www.district.in/movies/{MOVIE_SLUG}-{MOVIE_ID}"
+            f"?frmtid=rrfdpndypd&fromdate={TARGET_DATES[0]}"
+        )
+        probe_r    = requests.get(probe_url, headers=HEADERS, timeout=20)
+        discovered = discover_language_keys(probe_r.text)
+        lang_keys  = {**LANGUAGE_KEYS, **discovered} if discovered else LANGUAGE_KEYS
+        print(f"Language keys: {lang_keys}")
+    except Exception as e:
+        lang_keys = LANGUAGE_KEYS
+        print(f"Language discovery error: {e}, using defaults")
 
     new_hits = []
 
