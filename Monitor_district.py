@@ -18,6 +18,7 @@ TARGET_DATES = ["2026-08-20", "2026-08-21"]
 
 TARGET_CINEMAS = [
     "Express Avenue",
+    "Nexus Vijaya Mall",
 ]
 
 ALERTED_FILE = "district_alerted.json"
