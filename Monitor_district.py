@@ -14,7 +14,7 @@ LANGUAGE_KEYS = {
     "hMPG2XHyKL": "Tamil",
 }
 
-TARGET_DATES = ["2026-08-21"]
+TARGET_DATES = ["2026-08-20", "2026-08-21"]
 
 TARGET_CINEMAS = [
     "Express Avenue",
