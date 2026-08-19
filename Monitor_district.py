@@ -14,15 +14,10 @@ LANGUAGE_KEYS = {
     "hMPG2XHyKL": "Tamil",
 }
 
-TARGET_DATES = ["2026-07-30", "2026-07-31", "2026-08-07"]
+TARGET_DATES = ["2026-08-21"]
 
 TARGET_CINEMAS = [
     "Express Avenue",
-    "Palazzo",
-    "Nexus Vijaya",
-    "Vijaya Mall",
-    "Forum Vijaya",
-    "PVR"
 ]
 
 ALERTED_FILE = "district_alerted.json"
